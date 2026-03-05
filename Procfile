@@ -1,0 +1,1 @@
+worker: python earnings_bot.py
