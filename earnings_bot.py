@@ -8,7 +8,11 @@ WEBHOOK = "https://discord.com/api/webhooks/1479019811513172040/0Tip7R6LOIqE2hmO
 
 
 def send_discord(message):
-    requests.post(WEBHOOK, json={"content": message})
+    try:
+        requests.post(WEBHOOK, json={"content": message})
+        print("Sent to Discord")
+    except:
+        print("Discord webhook failed")
 
 
 # DAILY EARNINGS
@@ -17,14 +21,20 @@ def today_earnings():
     today = date.today()
 
     url = f"https://finnhub.io/api/v1/calendar/earnings?from={today}&to={today}&token={API_KEY}"
-    data = requests.get(url).json()
+
+    try:
+        data = requests.get(url).json()
+    except:
+        return
 
     message = "📊 **Today's Earnings**\n\n"
 
-    for company in data["earningsCalendar"][:15]:
+    earnings = data.get("earningsCalendar", [])
 
-        symbol = company.get("symbol","Unknown")
-        hour = company.get("hour","TBA")
+    for company in earnings[:15]:
+
+        symbol = company.get("symbol", "Unknown")
+        hour = company.get("hour", "TBA")
 
         if hour == "bmo":
             hour = "Before Market Open"
@@ -42,13 +52,19 @@ def weekly_earnings():
     today = date.today()
 
     url = f"https://finnhub.io/api/v1/calendar/earnings?from={today}&to={today}&token={API_KEY}"
-    data = requests.get(url).json()
+
+    try:
+        data = requests.get(url).json()
+    except:
+        return
 
     message = "📅 **Weekly Earnings Watchlist**\n\n"
 
-    for company in data["earningsCalendar"][:25]:
+    earnings = data.get("earningsCalendar", [])
 
-        symbol = company.get("symbol","Unknown")
+    for company in earnings[:25]:
+
+        symbol = company.get("symbol", "Unknown")
         message += f"{symbol}\n"
 
     send_discord(message)
@@ -58,72 +74,113 @@ def weekly_earnings():
 def premarket_gappers():
 
     url = f"https://finnhub.io/api/v1/stock/symbol?exchange=US&token={API_KEY}"
-    stocks = requests.get(url).json()
+
+    try:
+        stocks = requests.get(url).json()
+    except:
+        return
 
     message = "🚨 **Premarket Movers**\n\n"
 
     count = 0
 
-    for stock in stocks:
+    for stock in stocks[:200]:
 
         if count >= 10:
             break
 
         symbol = stock.get("symbol")
 
-        quote = requests.get(f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}").json()
+        try:
+            quote = requests.get(
+                f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
+            ).json()
+        except:
+            continue
 
-        if quote["pc"] != 0:
+        pc = quote.get("pc")
+        c = quote.get("c")
 
-            change = ((quote["c"] - quote["pc"]) / quote["pc"]) * 100
+        if pc and pc != 0 and c:
+
+            change = ((c - pc) / pc) * 100
 
             if abs(change) > 5:
 
                 message += f"{symbol} — {round(change,2)}%\n"
                 count += 1
 
-    send_discord(message)
+    if count > 0:
+        send_discord(message)
 
 
 # AFTER HOURS MOVERS
 def after_hours():
 
     url = f"https://finnhub.io/api/v1/stock/symbol?exchange=US&token={API_KEY}"
-    stocks = requests.get(url).json()
+
+    try:
+        stocks = requests.get(url).json()
+    except:
+        return
 
     message = "📈 **After Hours Movers**\n\n"
 
     count = 0
 
-    for stock in stocks:
+    for stock in stocks[:200]:
 
         if count >= 10:
             break
 
         symbol = stock.get("symbol")
 
-        quote = requests.get(f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}").json()
+        try:
+            quote = requests.get(
+                f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
+            ).json()
+        except:
+            continue
 
-        if quote["pc"] != 0:
+        pc = quote.get("pc")
+        c = quote.get("c")
 
-            change = ((quote["c"] - quote["pc"]) / quote["pc"]) * 100
+        if pc and pc != 0 and c:
+
+            change = ((c - pc) / pc) * 100
 
             if abs(change) > 5:
 
                 message += f"{symbol} — {round(change,2)}%\n"
                 count += 1
 
-    send_discord(message)
+    if count > 0:
+        send_discord(message)
 
 
-# SCHEDULE
+# SCHEDULE TASKS
 schedule.every().day.at("08:00").do(today_earnings)
 schedule.every().sunday.at("20:00").do(weekly_earnings)
 schedule.every().day.at("09:00").do(premarket_gappers)
 schedule.every().day.at("16:10").do(after_hours)
 
+
 print("Trading bot running...")
 
+send_discord("✅ Trading bot is now online")
+
+
+# TEST RUN (runs immediately when bot starts)
+today_earnings()
+premarket_gappers()
+after_hours()
+
+
 while True:
-    schedule.run_pending()
+
+    try:
+        schedule.run_pending()
+    except:
+        print("Scheduler error")
+
     time.sleep(60)
